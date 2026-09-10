@@ -1209,6 +1209,19 @@ of :class:`.PGInspector`, which offers additional methods::
 .. autoclass:: PGInspector
     :members:
 
+Invalid indexes
+^^^^^^^^^^^^^^^
+
+A ``CREATE INDEX CONCURRENTLY`` that fails, for example on a unique
+violation, leaves the index in the catalog marked as invalid: the planner
+ignores it and writes still maintain it.  Such an index is reflected with
+``postgresql_invalid`` set to ``True`` in its ``dialect_options``; healthy
+indexes carry no such key.  The parameter is accepted by :class:`.Index` so
+that a reflected :class:`.Table` can be re-created, and has no effect on the
+emitted DDL.
+
+.. versionadded:: 2.1
+
 .. _postgresql_table_options:
 
 PostgreSQL Table Options
@@ -3666,6 +3679,7 @@ class PGDialect(default._BackendsMultiReflection, default.DefaultDialect):
                 "with": {},
                 "tablespace": None,
                 "nulls_not_distinct": None,
+                "invalid": False,
             },
         ),
         (
@@ -5269,6 +5283,7 @@ class PGDialect(default._BackendsMultiReflection, default.DefaultDialect):
                 pg_catalog.pg_index.c.indrelid,
                 pg_catalog.pg_class.c.relname,
                 pg_catalog.pg_index.c.indisunique,
+                pg_catalog.pg_index.c.indisvalid,
                 pg_catalog.pg_constraint.c.conrelid.is_not(None).label(
                     "has_constraint"
                 ),
@@ -5475,6 +5490,10 @@ class PGDialect(default._BackendsMultiReflection, default.DefaultDialect):
                             "indnullsnotdistinct"
                         ]
 
+                    if not row["indisvalid"]:
+                        # left behind by a failed CREATE INDEX CONCURRENTLY;
+                        # the planner ignores it and writes still maintain it
+                        dialect_options["postgresql_invalid"] = True
                     if dialect_options:
                         index["dialect_options"] = dialect_options
 

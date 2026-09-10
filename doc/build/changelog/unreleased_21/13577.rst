@@ -1,0 +1,11 @@
+.. change::
+    :tags: usecase, postgresql, reflection
+    :tickets: 13577
+
+    The PostgreSQL dialect now reflects an index that the database marks as
+    invalid, which is what a failed ``CREATE INDEX CONCURRENTLY`` leaves
+    behind, with ``postgresql_invalid`` set to ``True`` in the index's
+    ``dialect_options``.  Healthy indexes are reflected unchanged.  The
+    ``postgresql_invalid`` parameter is accepted by :class:`.Index` so that a
+    reflected :class:`.Table` can still be re-created; it has no effect on the
+    emitted DDL.

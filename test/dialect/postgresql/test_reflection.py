@@ -2287,6 +2287,54 @@ class ReflectionTest(
             ],
         )
 
+    def test_index_reflection_invalid_index(self, metadata):
+        """an index left behind by a failed CREATE INDEX CONCURRENTLY
+        reflects with postgresql_invalid set; a healthy one does not"""
+
+        t = Table(
+            "t",
+            metadata,
+            Column("id", Integer, primary_key=True),
+            Column("x", Integer),
+        )
+        with testing.db.begin() as conn:
+            metadata.create_all(conn)
+            conn.execute(t.insert(), [{"id": 1, "x": 1}, {"id": 2, "x": 1}])
+            conn.exec_driver_sql("CREATE INDEX idx_ok ON t (x)")
+
+        # CONCURRENTLY cannot run inside a transaction; the duplicate
+        # values make the unique build fail and leave the index invalid
+        with testing.db.connect().execution_options(
+            isolation_level="AUTOCOMMIT"
+        ) as conn:
+            with expect_raises(exc.IntegrityError):
+                conn.exec_driver_sql(
+                    "CREATE UNIQUE INDEX CONCURRENTLY idx_broken ON t (x)"
+                )
+
+        with testing.db.connect() as conn:
+            ind = inspect(conn).get_indexes("t")
+        eq_(
+            ind,
+            [
+                {
+                    "name": "idx_broken",
+                    "unique": True,
+                    "column_names": ["x"],
+                    "dialect_options": {
+                        "postgresql_include": [],
+                        "postgresql_invalid": True,
+                    },
+                },
+                {
+                    "name": "idx_ok",
+                    "unique": False,
+                    "column_names": ["x"],
+                    "dialect_options": {"postgresql_include": []},
+                },
+            ],
+        )
+
     def test_foreign_key_option_inspection(self, metadata, connection):
         Table(
             "person",
